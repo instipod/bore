@@ -36,9 +36,14 @@ enum Command {
         #[clap(short, long, env = "BORE_SECRET", hide_env_values = true)]
         secret: Option<String>,
 
-	/// Write the assigned remote port to the given path.
-	#[clap(long, env = "BORE_WRITE_PORT_TO")]
-	write_port_to: Option<PathBuf>,
+        /// Write the assigned remote port to the given path.
+        #[clap(long, env = "BORE_WRITE_PORT_TO")]
+        write_port_to: Option<PathBuf>,
+
+        /// Run an executable after the remote port is established.
+        /// The remote port is passed as the first arugment to the new process.
+        #[clap(long, env = "POST_START_COMMAND")]
+        post_start_command: Option<String>
     },
 
     /// Runs the remote proxy server.
@@ -66,15 +71,20 @@ async fn run(command: Command) -> Result<()> {
             to,
             port,
             secret,
-	    write_port_to,
+	        write_port_to,
+            post_start_command,
         } => {
             let client = Client::new(&local_host, local_port, &to, port, secret.as_deref()).await?;
 
-	    if let Some(path) = write_port_to {
-		let mut file = File::create(path).await?;
-		let port = client.remote_port().to_string();
-		file.write_all(&port.into_bytes()[..]).await?;
-	    }
+            if let Some(path) = write_port_to {
+                let mut file = File::create(path).await?;
+                let port = client.remote_port().to_string();
+                file.write_all(&port.into_bytes()[..]).await?;
+            }
+
+            if let Some(start_command) = post_start_command {
+                std::process::Command::new(start_command).arg(client.remote_port().to_string()).spawn()?;
+            }
 
             client.listen().await?;
         }
